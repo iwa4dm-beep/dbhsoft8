@@ -103,8 +103,28 @@ export class CloudinaryStorageService implements StorageService {
 
   async deleteImage(key: string): Promise<boolean> {
     try {
-      // TODO: Implement Cloudinary delete API
-      console.log("Deleting image:", key);
+      // Delete using Cloudinary Admin API
+      const response = await fetch(
+        `https://api.cloudinary.com/v1_1/${this.cloudName}/resources/image/upload`,
+        {
+          method: 'DELETE',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            public_ids: [key]
+          })
+        }
+      );
+
+      if (!response.ok) {
+        const error = await response.json();
+        console.error("Cloudinary delete error:", error);
+        return false;
+      }
+
+      const result = await response.json();
+      console.log(`Image deleted from Cloudinary: ${key}`, result);
       return true;
     } catch (error) {
       console.error("Delete failed:", error);

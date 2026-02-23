@@ -1,18 +1,17 @@
 import { useMutation, useQuery } from 'convex/react';
-// import { api } from '../../convex/_generated/api';
+import { api } from '../../convex/_generated/api';
 import { toast } from 'sonner';
 
 /**
  * স্টাফ প্রোডাক্ট ইমেজ হুক
- * Phase 2: Convex integration (API references temporarily disabled)
+ * Phase 11: Convex integration - APIs enabled and working
  */
 
 /**
  * ইমেজ আপলোড হুক
  */
 export const useUploadProductImage = () => {
-  // TODO: Uncomment when API is properly typed
-  // const uploadImageMutation = useMutation(api.staffProductImages?.uploadProductImage) as any;
+  const uploadImageMutation = useMutation(api.staffProductImages.uploadProductImage);
 
   return async (imageData: {
     productId: string;
@@ -31,10 +30,9 @@ export const useUploadProductImage = () => {
     branchName: string;
   }) => {
     try {
-      // const result = await uploadImageMutation(imageData);
-      // return { success: true, data: result };
-      toast.success('ছবি আপলোড প্রস্তুত');
-      return { success: true, data: { imageId: 'temp-' + Date.now() } };
+      const result = await uploadImageMutation(imageData);
+      toast.success('ছবি সফলভাবে আপলোড হয়েছে');
+      return { success: true, data: result };
     } catch (error) {
       const message = error instanceof Error ? error.message : 'ছবি আপলোড ব্যর্থ';
       toast.error(message);
@@ -50,38 +48,36 @@ export const useProductImages = (
   productId: string | null,
   options: { serialNumber?: string; variantId?: number; approvedOnly?: boolean } = {}
 ) => {
-  // TODO: Uncomment when API is properly typed
-  // const images = useQuery(
-  //   productId ? api.staffProductImages?.getProductImages : null,
-  //   productId
-  //     ? {
-  //         productId,
-  //         serialNumber: options.serialNumber,
-  //         variantId: options.variantId,
-  //         approvedOnly: options.approvedOnly,
-  //       }
-  //     : 'skip'
-  // ) as any;
+  const images = useQuery(
+    productId ? api.staffProductImages.getProductImages : null,
+    productId
+      ? {
+          productId,
+          serialNumber: options.serialNumber,
+          variantId: options.variantId,
+          approvedOnly: options.approvedOnly,
+        }
+      : 'skip'
+  );
 
-  return [];
+  return images || [];
 };
 
 /**
  * স্ক্যান হিস্টরি হুক
  */
 export const useScanHistory = (staffId: string | null, limit: number = 20) => {
-  // TODO: Uncomment when API is properly typed
-  // const history = useQuery(
-  //   staffId ? api.staffProductImages?.getScanHistory : null,
-  //   staffId
-  //     ? {
-  //         staffId,
-  //         limit,
-  //       }
-  //     : 'skip'
-  // ) as any;
+  const history = useQuery(
+    staffId ? api.staffProductImages.getScanHistory : null,
+    staffId
+      ? {
+          staffId,
+          limit,
+        }
+      : 'skip'
+  );
 
-  return [];
+  return history || [];
 };
 
 /**
@@ -91,19 +87,18 @@ export const useStaffStats = (
   staffId: string | null,
   options: { branchId?: string; days?: number } = {}
 ) => {
-  // TODO: Uncomment when API is properly typed
-  // const stats = useQuery(
-  //   staffId ? api.staffProductImages?.getStaffStats : null,
-  //   staffId
-  //     ? {
-  //         staffId,
-  //         branchId: options.branchId,
-  //         days: options.days,
-  //       }
-  //     : 'skip'
-  // ) as any;
+  const stats = useQuery(
+    staffId ? api.staffProductImages.getStaffStats : null,
+    staffId
+      ? {
+          staffId,
+          branchId: options.branchId,
+          days: options.days,
+        }
+      : 'skip'
+  );
 
-  return {
+  return stats || {
     scanCount: 0,
     uploadCount: 0,
     imageCount: 0,
@@ -116,12 +111,11 @@ export const useStaffStats = (
  * ইমেজ অনুমোদন হুক
  */
 export const useApproveImage = () => {
-  // TODO: Uncomment when API is properly typed
-  // const approveMutation = useMutation(api.staffProductImages?.approveImage) as any;
+  const approveMutation = useMutation(api.staffProductImages.approveImage);
 
   return async (imageId: string, approved: boolean) => {
     try {
-      // await approveMutation({ imageId, approved });
+      await approveMutation({ imageId, approved });
       toast.success(approved ? 'ছবি অনুমোদিত হয়েছে' : 'ছবি প্রত্যাখ্যান করা হয়েছে');
       return { success: true };
     } catch (error) {
@@ -136,14 +130,13 @@ export const useApproveImage = () => {
  * ইমেজ ডিলিট হুক
  */
 export const useDeleteImage = () => {
-  // TODO: Uncomment when API is properly typed
-  // const deleteMutation = useMutation(api.staffProductImages?.deleteImage) as any;
+  const deleteMutation = useMutation(api.staffProductImages.deleteImage);
 
   return async (imageId: string) => {
     try {
-      // const result = await deleteMutation({ imageId });
+      const result = await deleteMutation({ imageId });
       toast.success('ছবি মুছে দেওয়া হয়েছে');
-      return { success: true };
+      return { success: true, data: result };
     } catch (error) {
       const message = error instanceof Error ? error.message : 'ছবি মুছতে ব্যর্থ';
       toast.error(message);
@@ -156,26 +149,25 @@ export const useDeleteImage = () => {
  * স্টাফ প্রোডাক্ট সেটিংস হুক
  */
 export const useStaffProductSettings = (branchId: string | null) => {
-  // TODO: Uncomment when API is properly typed
-  // const settings = useQuery(
-  //   branchId ? api.staffProductSettings?.getStaffProductSettings : null,
-  //   branchId
-  //     ? {
-  //         branchId,
-  //       }
-  //     : 'skip'
-  // ) as any;
+  const settings = useQuery(
+    branchId ? api.staffProductSettings.getStaffProductSettings : null,
+    branchId
+      ? {
+          branchId,
+        }
+      : 'skip'
+  );
 
-  // const updateMutation = useMutation(api.staffProductSettings?.updateStaffProductSettings) as any;
+  const updateMutation = useMutation(api.staffProductSettings.updateStaffProductSettings);
 
   const updateSettings = async (newSettings: any) => {
     try {
-      // const result = await updateMutation({
-      //   branchId: branchId!,
-      //   ...newSettings,
-      // });
+      const result = await updateMutation({
+        branchId: branchId!,
+        ...newSettings,
+      });
       toast.success('সেটিংস আপডেট হয়েছে');
-      return { success: true, data: {} };
+      return { success: true, data: result };
     } catch (error) {
       const message = error instanceof Error ? error.message : 'সেটিংস আপডেট ব্যর্থ';
       toast.error(message);
