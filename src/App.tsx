@@ -3,6 +3,7 @@ import { Authenticated, Unauthenticated, useQuery, useConvexAuth } from "convex/
 import { api } from "../convex/_generated/api";
 import { LoginWrapper } from "./components/LoginWrapper";
 import { SignOutButton } from "./SignOutButton";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import { Dashboard } from "./components/Dashboard";
 import { LazyLoadingFallback, preloadComponents } from "./utils/lazyLoad";
 import { registerServiceWorkerCacheHandlers } from "./utils/cacheService";
@@ -219,13 +220,15 @@ export default function App() {
 
   return (
     <>
-      <Unauthenticated>
-        {/* Rendering when user is NOT authenticated */}
-        <LoginWrapper />
-      </Unauthenticated>
-      <Authenticated>
-        {/* Rendering when user IS authenticated */}
-        <div className="min-h-screen flex flex-col bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
+      <ErrorBoundary>
+        <Unauthenticated>
+          {/* Rendering when user is NOT authenticated */}
+          <LoginWrapper />
+        </Unauthenticated>
+        <Authenticated>
+          {/* Rendering when user IS authenticated */}
+          <ErrorBoundary>
+            <div className="min-h-screen flex flex-col bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
           {/* Mobile Header - iPhone Style */}
           <div className="lg:hidden sticky top-0 z-50 bg-gradient-to-b from-slate-900/80 via-slate-800/70 to-slate-900/60 backdrop-blur-xl border-b border-white/20 shadow-2xl">
             <div className="flex items-center justify-between px-4 py-4 gap-3">
@@ -352,16 +355,20 @@ export default function App() {
             {/* Main Content */}
             <div className="lg:pl-80 flex flex-col flex-1 overflow-hidden w-full bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
               <main className="flex-1 overflow-auto">
-                <div className="py-4 px-3 sm:py-6 sm:px-6 lg:px-8 w-full">
-                  {renderContent()}
-                </div>
+                <ErrorBoundary>
+                  <div className="py-4 px-3 sm:py-6 sm:px-6 lg:px-8 w-full">
+                    {renderContent()}
+                  </div>
+                </ErrorBoundary>
               </main>
             </div>
           </div>
 
           {/* Mobile Menu Overlay Backdrop */}
-        </div>
-      </Authenticated>
+            </div>
+          </ErrorBoundary>
+        </Authenticated>
+      </ErrorBoundary>
     </>
   );
 }

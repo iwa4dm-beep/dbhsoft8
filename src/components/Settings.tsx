@@ -360,20 +360,25 @@ export default function Settings() {
     setShowAddUser(false);
   };
 
-  const clearCache = () => {
-    // Clear browser cache
-    if ('caches' in window) {
-      caches.keys().then(names => {
-        names.forEach(name => {
-          caches.delete(name);
-        });
-      });
+  const clearCache = async () => {
+    try {
+      // Clear browser cache
+      if ('caches' in window) {
+        const names = await caches.keys();
+        await Promise.all(
+          names.map(name => caches.delete(name))
+        );
+        console.log(`✓ Cleared ${names.length} cache stores`);
+      }
+      
+      // Clear localStorage
+      localStorage.clear();
+      
+      toast.success("✅ Cache cleared successfully!");
+    } catch (error) {
+      console.error("Cache clear failed:", error);
+      toast.error(`Failed to clear cache: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
-    
-    // Clear localStorage
-    localStorage.clear();
-    
-    toast.success("Cache cleared successfully!");
   };
 
   const optimizeDatabase = () => {
@@ -399,15 +404,18 @@ export default function Settings() {
       toast.success("✅ অ্যাপ্লিকেশন সফলভাবে ডিফল্ট স্টেটে রিসেট হয়েছে!\nপেজ রিলোড হচ্ছে...");
       
       // Clear browser cache and localStorage as well
-      if ('caches' in window) {
-        caches.keys().then(names => {
-          names.forEach(name => {
-            caches.delete(name);
-          });
-        });
+      try {
+        if ('caches' in window) {
+          const names = await caches.keys();
+          await Promise.all(
+            names.map(name => caches.delete(name))
+          );
+        }
+        localStorage.clear();
+        sessionStorage.clear();
+      } catch (storageError) {
+        console.error("Storage clear error:", storageError);
       }
-      localStorage.clear();
-      sessionStorage.clear();
       
       // Reload the page to reflect changes
       setTimeout(() => {

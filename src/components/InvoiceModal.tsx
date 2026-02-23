@@ -126,13 +126,17 @@ export function InvoiceModal({ sale, onClose }: InvoiceModalProps) {
           dark: '#000000',
           light: '#FFFFFF'
         }
-      }).then((url: string) => {
-        setQrCodeDataUrl(url);
-      }).catch((err: Error) => {
-        console.error('QR Code generation error:', err);
-        toast.error('Failed to generate QR code. Print without QR code.');
-        setQrCodeDataUrl(''); // Clear any previous QR code
-      });
+      })
+        .then((url: string) => {
+          setQrCodeDataUrl(url);
+          console.log('✓ QR code generated successfully');
+        })
+        .catch((err: Error) => {
+          console.error('❌ QR Code generation error:', err);
+          const errorMsg = err?.message || 'Unknown QR generation error';
+          toast.error(`Failed to generate QR code: ${errorMsg}`);
+          setQrCodeDataUrl(''); // Clear any previous QR code
+        });
     }
   }, [printSettings.includeQR, sale, shopSettings]);
 

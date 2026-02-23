@@ -54,9 +54,19 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({
   const stopCamera = () => {
     if (streamRef.current) {
       // Stop all tracks to properly release camera
-      streamRef.current.getTracks().forEach(track => track.stop());
+      try {
+        streamRef.current.getTracks().forEach(track => {
+          track.stop();
+        });
+        console.log('✓ Camera stream stopped');
+      } catch (error) {
+        console.error('Error stopping camera stream:', error);
+      }
       CameraService.stopStream(streamRef.current);
       streamRef.current = null;
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
     }
     setIsActive(false);
   };

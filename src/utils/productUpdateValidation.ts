@@ -38,6 +38,44 @@
  */
 
 // ============================================
+// TYPE DEFINITIONS
+// ============================================
+
+export interface Product {
+  _id?: string;
+  name: string;
+  brand: string;
+  model?: string;
+  categoryId: string;
+  style?: string;
+  fabric: string;
+  color: string;
+  sizes: string[];
+  embellishments?: string;
+  occasion?: string;
+  stockLocation: string;
+  costPrice: number;
+  sellingPrice: number;
+  minStockLevel: number;
+  maxStockLevel: number;
+  barcode?: string;
+  productCode?: string;
+  description?: string;
+  tags?: string[];
+  [key: string]: any; // For additional fields
+}
+
+export interface ValidationResult {
+  valid: boolean;
+  error?: string;
+}
+
+export interface ValidationResponse {
+  valid: boolean;
+  errors: Record<string, string>;
+}
+
+// ============================================
 // VALIDATION UTILITIES
 // ============================================
 
@@ -165,7 +203,7 @@ export const ProductUpdateValidation = {
   },
 
   // Validate all fields
-  validateAll: (product: any): { valid: boolean; errors: Record<string, string> } => {
+  validateAll: (product: Product): ValidationResponse => {
     const errors: Record<string, string> = {};
 
     const nameValidation = ProductUpdateValidation.validateName(product.name);
@@ -206,7 +244,7 @@ export const ProductUpdateValidation = {
 // PRODUCT COMPARISON (For unsaved changes detection)
 // ============================================
 
-export const compareProducts = (original: any, current: any): boolean => {
+export const compareProducts = (original: Product, current: Product): boolean => {
   const relevantFields = [
     "name",
     "brand",
@@ -265,7 +303,7 @@ export const detectConcurrentUpdate = (
 // ERROR MESSAGE MAPPING
 // ============================================
 
-export const mapUpdateError = (error: any): string => {
+export const mapUpdateError = (error: Error): string => {
   const message = error?.message || error?.data?.message || "অজানা ত্রুটি (Unknown error)";
 
   const errorMap: Record<string, string> = {
@@ -307,7 +345,7 @@ export const calculateProfit = (costPrice: number, sellingPrice: number): number
 // LOGGING UTILITY
 // ============================================
 
-export const logProductUpdate = (action: string, product: any, details?: any) => {
+export const logProductUpdate = (action: string, product: Product, details?: Record<string, any>) => {
   console.group(`📝 Product Update: ${action}`);
   console.log("Product ID:", product._id);
   console.log("Product Name:", product.name);

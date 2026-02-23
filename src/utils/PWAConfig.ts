@@ -56,16 +56,16 @@ export const PWAUtils = {
    * Request installation prompt
    */
   requestInstall: async (): Promise<boolean> => {
-    let deferredPrompt: any = null;
+    let deferredPrompt: Event | null = null;
 
-    window.addEventListener('beforeinstallprompt', (e: any) => {
+    window.addEventListener('beforeinstallprompt', (e: Event) => {
       e.preventDefault();
       deferredPrompt = e;
     });
 
-    if (deferredPrompt) {
-      await deferredPrompt.prompt();
-      const { outcome } = await deferredPrompt.userChoice;
+    if (deferredPrompt && 'prompt' in deferredPrompt) {
+      await (deferredPrompt as any).prompt();
+      const { outcome } = await (deferredPrompt as any).userChoice;
       console.log(`User response to install prompt: ${outcome}`);
       return outcome === 'accepted';
     }
@@ -208,7 +208,7 @@ export const usePWA = () => {
     });
 
     // Handle install prompt
-    const handleBeforeInstall = (e: any) => {
+    const handleBeforeInstall = (e: Event) => {
       e.preventDefault();
       setDeferredPrompt(e);
       setIsInstallable(true);
