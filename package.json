@@ -8,7 +8,8 @@
     "dev:frontend": "vite --open",
     "dev:backend": "convex dev",
     "build": "vite build",
-    "lint": "tsc -p convex -noEmit --pretty false && tsc -p . -noEmit --pretty false && convex dev --once && vite build"
+    "lint": "tsc -p convex -noEmit --pretty false && tsc -p . -noEmit --pretty false && convex dev --once && vite build",
+    "deploy": "npm run build && echo 'Frontend built successfully. Ready for deployment.' && echo 'Deploy to: dist/ folder' && echo 'Backend: https://affable-cassowary-490.convex.cloud' && echo 'Options: 1) Vercel 2) Netlify 3) Docker 4) Self-hosted'"
   },
   "dependencies": {
     "@convex-dev/auth": "^0.0.80",
