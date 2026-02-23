@@ -1,5 +1,5 @@
 import { useState, lazy, Suspense, useEffect, useCallback, useMemo } from "react";
-import { Authenticated, Unauthenticated, useQuery } from "convex/react";
+import { Authenticated, Unauthenticated, useQuery, useConvexAuth } from "convex/react";
 import { api } from "../convex/_generated/api";
 import { LoginWrapper } from "./components/LoginWrapper";
 import { SignOutButton } from "./SignOutButton";
@@ -38,6 +38,22 @@ const ProductImageRecognition = lazy(() => import("./components/StaffPortal/Prod
 export default function App() {
   const [activeTab, setActiveTab] = useState("dashboard");
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  
+  // ✅ নতুন: Authentication state tracking
+  const { isAuthenticated, isLoading } = useConvexAuth();
+
+  // ✅ নতুন: Log authentication status changes
+  useEffect(() => {
+    if (!isLoading) {
+      if (isAuthenticated) {
+        console.log("✓ [App] User authenticated - Dashboard rendering");
+      } else {
+        console.log("ℹ [App] User not authenticated - LoginWrapper rendering");
+      }
+    } else {
+      console.log("⏳ [App] Authentication state loading...");
+    }
+  }, [isAuthenticated, isLoading]);
   
   // Initialize offline sync
   const { isOnline } = useOfflineSync();
@@ -204,9 +220,11 @@ export default function App() {
   return (
     <>
       <Unauthenticated>
+        {/* Rendering when user is NOT authenticated */}
         <LoginWrapper />
       </Unauthenticated>
       <Authenticated>
+        {/* Rendering when user IS authenticated */}
         <div className="min-h-screen flex flex-col bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
           {/* Mobile Header - iPhone Style */}
           <div className="lg:hidden sticky top-0 z-50 bg-gradient-to-b from-slate-900/80 via-slate-800/70 to-slate-900/60 backdrop-blur-xl border-b border-white/20 shadow-2xl">

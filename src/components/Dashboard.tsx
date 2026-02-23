@@ -4,6 +4,7 @@ import { useOfflineSync } from "../hooks/useOfflineSync";
 import { useCustomNotificationSounds } from "../hooks/useCustomNotificationSounds";
 import { useNotificationSystem, NotificationPresets } from "../hooks/useNotificationSystem";
 import { NotificationAlertsPanel, NotificationIcon, DashboardAlertsSummary } from "./NotificationAlertsPanel";
+import { AuthenticationFlowVerification } from "./AuthenticationFlowVerification";
 import { useState, useEffect, useRef } from "react";
 
 // Skeleton component for loading cards
@@ -39,6 +40,23 @@ export function Dashboard() {
   const { notify } = useNotificationSystem();
   // Load custom notification sounds from settings
   const { isLoaded: soundsLoaded } = useCustomNotificationSounds();
+  
+  // ✅ নতুন: Authentication flow verification state
+  const [showAuthVerification, setShowAuthVerification] = useState(() => {
+    // Show verification once on first authentication
+    const verified = sessionStorage.getItem('authFlowVerified');
+    return !verified;
+  });
+
+  useEffect(() => {
+    if (showAuthVerification) {
+      console.log("✓ [Dashboard] Authentication flow verification displayed");
+      sessionStorage.setItem('authFlowVerified', 'true');
+      // Auto-hide after 15 seconds
+      const timer = setTimeout(() => setShowAuthVerification(false), 15000);
+      return () => clearTimeout(timer);
+    }
+  }, [showAuthVerification]);
   
   // Track which products have been notified about to avoid duplicate notifications
   const notifiedProductsRef = useRef<Set<string>>(new Set());
@@ -162,6 +180,36 @@ export function Dashboard() {
 
   return (
     <div className="w-full min-h-screen bg-gradient-to-b from-slate-50 via-white to-slate-50">
+      {/* ✅ নতুন: Authentication Flow Verification - Show on first sign-up/sign-in */}
+      {showAuthVerification && (
+        <div className="bg-gradient-to-r from-green-50 to-emerald-50 border-b-2 border-green-400 p-4">
+          <div className="max-w-7xl mx-auto">
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <span className="text-2xl animate-bounce">✓</span>
+                <div>
+                  <h3 className="font-bold text-green-900">🎉 Authentication Successful!</h3>
+                  <p className="text-sm text-green-800">আপনি সফলভাবে লগইন করেছেন এবং ড্যাশবোর্ডে রিডাইরেক্ট হয়েছেন</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowAuthVerification(false)}
+                className="text-green-600 hover:text-green-700 font-bold text-xl"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Authentication Flow Details (Optional - uncomment for detailed logs) */}
+      {showAuthVerification && (
+        <div className="bg-blue-50 border-b border-blue-200 p-4 mx-4 my-2 rounded-lg">
+          <AuthenticationFlowVerification />
+        </div>
+      )}
+      
       {/* Online/Offline Indicator */}
       {!isOnline && (
         <div className="bg-yellow-50 border-b border-yellow-200 px-3 py-2 sm:px-4 sm:py-3">

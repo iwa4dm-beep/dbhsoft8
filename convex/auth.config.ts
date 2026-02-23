@@ -1,7 +1,7 @@
 export default {
   providers: [
     {
-      domain: process.env.CONVEX_SITE_URL,
+      domain: "https://pastel-dalmatian-808.convex.cloud",
       applicationID: "convex",
     },
   ],
