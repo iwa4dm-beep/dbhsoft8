@@ -17,19 +17,29 @@ export function SignInForm() {
           setSubmitting(true);
           const formData = new FormData(e.target as HTMLFormElement);
           formData.set("flow", flow);
-          void signIn("password", formData).catch((error) => {
-            let toastTitle = "";
-            if (error.message.includes("Invalid password")) {
-              toastTitle = "Invalid password. Please try again.";
-            } else {
-              toastTitle =
-                flow === "signIn"
-                  ? "Could not sign in, did you mean to sign up?"
-                  : "Could not sign up, did you mean to sign in?";
-            }
-            toast.error(toastTitle);
-            setSubmitting(false);
-          });
+          void signIn("password", formData)
+            .then(() => {
+              // Success - form will redirect due to Authenticated component
+              toast.success(flow === "signIn" ? "Signed in successfully!" : "Account created successfully!");
+              setSubmitting(false);
+            })
+            .catch((error) => {
+              let toastTitle = "";
+              if (error.message.includes("Invalid password")) {
+                toastTitle = "Invalid password. Please try again.";
+              } else if (error.message.includes("already exists")) {
+                toastTitle = "This email is already registered. Please sign in instead.";
+              } else if (error.message.includes("user with this email")) {
+                toastTitle = "Email not found. Please sign up first.";
+              } else {
+                toastTitle =
+                  flow === "signIn"
+                    ? "Could not sign in, did you mean to sign up?"
+                    : "Could not sign up, did you mean to sign in?";
+              }
+              toast.error(toastTitle);
+              setSubmitting(false);
+            });
         }}
       >
         <input
