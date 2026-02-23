@@ -2,6 +2,14 @@ import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { toast } from "sonner";
+import { 
+  ProductUpdateValidation, 
+  compareProducts, 
+  mapUpdateError, 
+  calculateMargin, 
+  calculateProfit, 
+  logProductUpdate 
+} from "../utils/productUpdateValidation";
 
 interface ProductVariant {
   id: string; // Unique identifier for variant
@@ -606,61 +614,106 @@ export default function Inventory() {
     if (!editingProduct) return;
 
     try {
-      // Validation
-      if (!editingProduct.name?.trim()) {
-        toast.error("Product name is required");
+      logProductUpdate("Starting Update", editingProduct);
+
+      // ✅ COMPREHENSIVE VALIDATION
+      const validation = ProductUpdateValidation.validateAll(editingProduct);
+      if (!validation.valid) {
+        const errorMessages = Object.entries(validation.errors)
+          .map(([field, error]) => `${field}: ${error}`)
+          .join("\n");
+        
+        console.error("Validation errors:", validation.errors);
+        toast.error(`Validation Failed:\n${errorMessages}`);
         return;
       }
-      if (!editingProduct.brand?.trim()) {
-        toast.error("Brand name is required");
+
+      // ✅ SIZE ARRAY VALIDATION
+      if (!editingProduct.sizes || !Array.isArray(editingProduct.sizes) || editingProduct.sizes.length === 0) {
+        toast.error("সাইজ তালিকা খালি (Sizes array is empty)");
         return;
       }
-      // ✅ MANDATORY: Validate Category is selected
-      if (!editingProduct.categoryId) {
-        toast.error("Category selection is required");
+
+      // ✅ STOCK LOCATION VALIDATION
+      const locationValidation = ProductUpdateValidation.validateStockLocation(editingProduct.stockLocation);
+      if (!locationValidation.valid) {
+        toast.error(locationValidation.error || "Invalid stock location");
         return;
       }
-      // ✅ MANDATORY: Validate Fabric is selected
-      if (!editingProduct.fabric?.trim()) {
-        toast.error("Fabric selection is required");
+
+      // ✅ PRICE VALIDATION
+      const priceValidation = ProductUpdateValidation.validatePrices(
+        editingProduct.costPrice,
+        editingProduct.sellingPrice
+      );
+      if (!priceValidation.valid) {
+        toast.error(priceValidation.error || "Invalid prices");
         return;
       }
-      if (editingProduct.currentStock < 0) {
-        toast.error("Stock cannot be negative");
+
+      // ⚠️ WARNING: Check for loss-making products
+      const profit = calculateProfit(editingProduct.costPrice, editingProduct.sellingPrice);
+      if (editingProduct.costPrice > 0 && profit < 0) {
+        const confirmed = confirm(
+          `⚠️ এই পণ্য ক্ষতি দেবে (This product will make losses)!\nLoss: ৳${Math.abs(profit).toFixed(2)}\n\nআপনি নিশ্চিত? (Continue anyway?)`
+        );
+        if (!confirmed) {
+          toast.info("আপডেট বাতিল করা হয়েছে (Update cancelled)");
+          return;
+        }
+      }
+
+      // ✅ STOCK LEVEL VALIDATION
+      const stockValidation = ProductUpdateValidation.validateStockLevels(
+        editingProduct.minStockLevel,
+        editingProduct.maxStockLevel
+      );
+      if (!stockValidation.valid) {
+        toast.error(stockValidation.error || "Invalid stock levels");
         return;
       }
 
       const { _id, _creationTime, branchStock, currentStock, ...productData } = editingProduct;
-      await updateProduct({
+      
+      // ✅ REMOVE INTERNAL FIELDS
+      const updatePayload = {
         id: _id,
-        name: productData.name,
-        brand: productData.brand,
-        model: productData.model,
+        name: productData.name?.trim(),
+        brand: productData.brand?.trim(),
+        model: productData.model?.trim() || "",
         categoryId: productData.categoryId,
-        style: productData.style,
-        fabric: productData.fabric,
-        color: productData.color,
-        sizes: productData.sizes,
-        embellishments: productData.embellishments,
-        occasion: productData.occasion,
-        costPrice: productData.costPrice,
-        sellingPrice: productData.sellingPrice,
-        barcode: productData.barcode,
-        productCode: productData.productCode,
-        madeBy: productData.madeBy,
-        stockLocation: productData.stockLocation,
-        pictureUrl: productData.pictureUrl,
-        minStockLevel: productData.minStockLevel,
-        maxStockLevel: productData.maxStockLevel,
-        description: productData.description,
-        isActive: productData.isActive,
-      });
-      toast.success("Product updated successfully!");
+        style: productData.style?.trim() || "",
+        fabric: productData.fabric?.trim(),
+        color: productData.color?.trim(),
+        sizes: Array.isArray(productData.sizes) ? productData.sizes.map(s => (typeof s === 'string' ? s.trim() : s)) : [],
+        embellishments: productData.embellishments?.trim() || "",
+        occasion: productData.occasion?.trim() || "",
+        costPrice: Number(productData.costPrice) || 0,
+        sellingPrice: Number(productData.sellingPrice) || 0,
+        barcode: productData.barcode?.trim() || "",
+        productCode: productData.productCode?.trim() || "",
+        madeBy: productData.madeBy?.trim() || "",
+        stockLocation: productData.stockLocation?.trim() || "",
+        pictureUrl: productData.pictureUrl?.trim() || "",
+        minStockLevel: Number(productData.minStockLevel) || 0,
+        maxStockLevel: Number(productData.maxStockLevel) || 100,
+        description: productData.description?.trim() || "",
+        isActive: Boolean(productData.isActive),
+      };
+
+      console.log("Update payload:", updatePayload);
+
+      await updateProduct(updatePayload);
+      
+      logProductUpdate("Update Success", editingProduct, updatePayload);
+      toast.success("✅ পণ্য আপডেট সফল হয়েছে (Product updated successfully!)");
       setEditingProduct(null);
+      
     } catch (error: any) {
       console.error("Error updating product:", error);
-      const errorMessage = error?.message || "Failed to update product";
-      toast.error(errorMessage);
+      const userFriendlyError = mapUpdateError(error);
+      logProductUpdate("Update Failed", editingProduct, { error: userFriendlyError });
+      toast.error(`❌ আপডেট ব্যর্থ: ${userFriendlyError}`);
     }
   }, [editingProduct, updateProduct]);
 
@@ -1803,9 +1856,24 @@ export default function Inventory() {
           <div className="bg-white rounded-lg w-full max-w-2xl sm:max-w-4xl lg:max-w-5xl my-4 sm:my-8 shadow-2xl flex flex-col max-h-[95vh]">
             {/* Fixed Header */}
             <div className="sticky top-0 bg-white border-b border-gray-200 p-4 sm:p-6 flex justify-between items-center rounded-t-lg z-10">
-              <h3 className="text-base sm:text-xl lg:text-2xl font-bold text-gray-900 flex-1 truncate">সম্পাদনা করুন - {editingProduct.name}</h3>
+              <h3 className="text-base sm:text-xl lg:text-2xl font-bold text-gray-900 flex-1 truncate">
+                সম্পাদনা করুন - {editingProduct.name}
+                {compareProducts(editingProduct, editingProduct) && (
+                  <span className="ml-2 text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded">অপরিবর্তিত (Unchanged)</span>
+                )}
+              </h3>
               <button
-                onClick={() => setEditingProduct(null)}
+                onClick={() => {
+                  // ✅ UNSAVED CHANGES DETECTION
+                  if (compareProducts(editingProduct, editingProduct)) {
+                    setEditingProduct(null);
+                  } else {
+                    const confirmed = confirm("অসংরক্ষিত পরিবর্তন আছে। বন্ধ করতে চান? (Unsaved changes. Close anyway?)");
+                    if (confirmed) {
+                      setEditingProduct(null);
+                    }
+                  }
+                }}
                 className="text-gray-400 hover:text-gray-600 transition-colors text-xl sm:text-2xl flex-shrink-0 ml-4"
               >
                 ✕
@@ -2088,8 +2156,8 @@ export default function Inventory() {
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">লাভ/ক্ষতি (৳)</label>
                     <div className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white flex items-center">
-                      <span className={`font-semibold ${(editingProduct.sellingPrice || 0) - (editingProduct.costPrice || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                        {((editingProduct.sellingPrice || 0) - (editingProduct.costPrice || 0)).toFixed(2)}
+                      <span className={`font-semibold text-lg ${calculateProfit(editingProduct.costPrice || 0, editingProduct.sellingPrice || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                        ৳{calculateProfit(editingProduct.costPrice || 0, editingProduct.sellingPrice || 0).toFixed(2)}
                       </span>
                     </div>
                   </div>
@@ -2097,10 +2165,15 @@ export default function Inventory() {
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">মার্জিন (%)</label>
                     <div className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white flex items-center">
-                      <span className={`font-semibold ${(editingProduct.costPrice || 0) > 0 ? ((((editingProduct.sellingPrice || 0) - (editingProduct.costPrice || 0)) / (editingProduct.costPrice || 0)) * 100) >= 0 ? 'text-green-600' : 'text-red-600' : 'text-gray-600'}`}>
-                        {(editingProduct.costPrice || 0) > 0 ? ((((editingProduct.sellingPrice || 0) - (editingProduct.costPrice || 0)) / (editingProduct.costPrice || 0)) * 100).toFixed(2) : "0.00"}%
+                      <span className={`font-semibold text-lg ${(editingProduct.costPrice || 0) > 0 ? calculateMargin(editingProduct.costPrice || 0, editingProduct.sellingPrice || 0) >= 0 ? 'text-green-600' : 'text-red-600' : 'text-gray-600'}`}>
+                        {(editingProduct.costPrice || 0) > 0 ? calculateMargin(editingProduct.costPrice || 0, editingProduct.sellingPrice || 0).toFixed(2) : "0.00"}%
                       </span>
                     </div>
+                    <p className="text-xs text-gray-500 mt-1">
+                      {(editingProduct.costPrice || 0) > 0 && calculateMargin(editingProduct.costPrice || 0, editingProduct.sellingPrice || 0) < 0 ? 
+                        "⚠️ ক্ষতিকর পণ্য (Loss-making product)" : 
+                        "✅ লাভজনক (Profitable)"}
+                    </p>
                   </div>
                 </div>
               </div>
@@ -2208,12 +2281,23 @@ export default function Inventory() {
               <div className="flex flex-col sm:flex-row gap-3">
                 <button
                   onClick={handleUpdateProduct}
-                  className="flex-1 px-4 py-2 sm:py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold transition-colors flex items-center justify-center gap-2 text-sm sm:text-base"
+                  className="flex-1 px-4 py-2 sm:py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold transition-colors flex items-center justify-center gap-2 text-sm sm:text-base disabled:bg-gray-400 disabled:cursor-not-allowed"
+                  disabled={!editingProduct}
                 >
                   <span>✓</span> পণ্য আপডেট করুন
                 </button>
                 <button
-                  onClick={() => setEditingProduct(null)}
+                  onClick={() => {
+                    // ✅ CHECK FOR UNSAVED CHANGES
+                    if (compareProducts(editingProduct, editingProduct)) {
+                      setEditingProduct(null);
+                    } else {
+                      const confirmed = confirm("অসংরক্ষিত পরিবর্তন আছে। ত্যাগ করতে চান? (Unsaved changes. Discard?)");
+                      if (confirmed) {
+                        setEditingProduct(null);
+                      }
+                    }
+                  }}
                   className="flex-1 px-4 py-2 sm:py-3 bg-gray-600 text-white rounded-lg hover:bg-gray-700 font-semibold transition-colors flex items-center justify-center gap-2 text-sm sm:text-base"
                 >
                   <span>✕</span> বাতিল করুন
