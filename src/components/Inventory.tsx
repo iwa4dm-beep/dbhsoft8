@@ -177,6 +177,14 @@ export default function Inventory() {
   const addCategory = useMutation(api.categories.create);
   const autoAssignBoxNumbers = useMutation(api.products.autoAssignBoxNumbers);
 
+  // ✅ Debug: Log product loading in Inventory
+  useEffect(() => {
+    console.log('📦 Inventory - Products loaded:', products.length, 'items');
+    if (products.length > 0) {
+      console.log('✅ Total stock value:', products.reduce((sum, p) => sum + (p.currentStock * p.sellingPrice), 0));
+    }
+  }, [products.length]);
+
   // NOTE: Removed auto-creation of "General" category
   // Categories must be manually created by the user
 

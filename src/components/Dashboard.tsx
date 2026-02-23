@@ -65,6 +65,15 @@ export function Dashboard() {
 
   // Calculate stats - only when data is available
   const totalProducts = products?.length || 0;
+  
+  // ✅ Debug: Log product loading
+  useEffect(() => {
+    console.log('📦 Dashboard - Products loaded:', totalProducts, 'items');
+    if (totalProducts > 0) {
+      console.log('✅ First product:', products[0]?.name, 'Stock:', products[0]?.currentStock);
+      console.log('✅ Last product:', products[totalProducts-1]?.name, 'Stock:', products[totalProducts-1]?.currentStock);
+    }
+  }, [totalProducts, products]);
   const totalAbayas = products?.reduce((sum, product) => sum + product.currentStock, 0) || 0;
   const lowStockProducts = products?.filter(p => p.currentStock <= p.minStockLevel) || [];
   const totalValue = products?.reduce((sum, product) => 
