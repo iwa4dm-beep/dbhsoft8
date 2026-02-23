@@ -547,10 +547,10 @@ export function Dashboard() {
             <div className="font-bold text-yellow-900 mb-2">🔧 DIAGNOSTIC INFO (DEV ONLY)</div>
             <div className="text-sm text-yellow-800 space-y-1 font-mono">
               <div>📦 Products loaded: <span className={totalProducts > 0 ? "text-green-700 font-bold" : "text-red-700 font-bold"}>{totalProducts}</span></div>
-              <div>💾 Response object: <span className={productsResponse ? "text-green-700" : "text-red-700"}>{productsResponse ? "✅ Received" : "❌ Undefined (loading?)"}</span></div>
-              <div>📝 Response type: <span>{productsResponse ? typeof productsResponse : "N/A"}</span></div>
-              <div>🏷️ Has items key: <span className={productsResponse?.items ? "text-green-700" : "text-red-700"}>{productsResponse?.items ? "✅ Yes" : "❌ No"}</span></div>
-              <div>📊 First product: <span>{products[0]?.name || "❌ EMPTY"}</span></div>
+              <div>💾 Products array: <span className={Array.isArray(products) ? "text-green-700" : "text-red-700"}>{Array.isArray(products) ? "✅ Is Array" : "❌ Not Array"}</span></div>
+              <div>📝 Array length: <span>{products?.length || 0}</span></div>
+              <div>🏷️ First product: <span>{products[0]?.name || "❌ EMPTY"}</span></div>
+              <div>📊 First product stock: <span>{products[0]?.currentStock || 0}</span></div>
               <div>💰 Total stock value: ৳{totalValue.toLocaleString('en-BD')}</div>
               <div>⚠️ Low stock items: {lowStockProducts.length}</div>
               <div>👥 Customers: {customers.length}</div>
