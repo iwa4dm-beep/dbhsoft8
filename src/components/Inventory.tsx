@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { toast } from "sonner";
@@ -139,6 +139,13 @@ export default function Inventory() {
   const [imageModalUrl, setImageModalUrl] = useState<string | null>(null);
   const [imageZoomLevel, setImageZoomLevel] = useState(1);
 
+  // ✅ ENHANCED: Advanced search filters for Inventory
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+  const [stockStatus, setStockStatus] = useState<"all" | "in-stock" | "low-stock" | "out-of-stock">("all");
+  const [minPrice, setMinPrice] = useState<number | undefined>();
+  const [maxPrice, setMaxPrice] = useState<number | undefined>();
+  const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+
   // New product form state
   const [newProduct, setNewProduct] = useState({
     name: "",
@@ -257,6 +264,55 @@ export default function Inventory() {
     };
   }, [products]);
 
+  // ✅ ENHANCED: Get price statistics for filter range
+  const priceStats = useMemo(() => {
+    const prices = products.map(p => p.sellingPrice || 0);
+    return {
+      min: prices.length > 0 ? Math.min(...prices) : 0,
+      max: prices.length > 0 ? Math.max(...prices) : 10000,
+    };
+  }, [products]);
+
+  // ✅ ENHANCED: Count active filters
+  const activeFiltersCount = useMemo(() => {
+    let count = 0;
+    if (searchTerm) count++;
+    if (filterCategory) count++;
+    if (filterBrand) count++;
+    if (filterFabric) count++;
+    if (filterColor) count++;
+    if (filterOccasion) count++;
+    if (stockStatus !== "all") count++;
+    if (minPrice !== undefined) count++;
+    if (maxPrice !== undefined) count++;
+    return count;
+  }, [searchTerm, filterCategory, filterBrand, filterFabric, filterColor, filterOccasion, stockStatus, minPrice, maxPrice]);
+
+  // ✅ ENHANCED: Clear all filters function
+  const clearAllFilters = useCallback(() => {
+    setSearchTerm("");
+    setFilterCategory("");
+    setFilterBrand("");
+    setFilterFabric("");
+    setFilterColor("");
+    setFilterOccasion("");
+    setStockStatus("all");
+    setMinPrice(undefined);
+    setMaxPrice(undefined);
+    setShowAdvancedFilters(false);
+  }, []);
+
+  // ✅ ENHANCED: Debounced search handler
+  const handleSearchChange = useCallback((value: string) => {
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
+    
+    debounceTimerRef.current = setTimeout(() => {
+      setSearchTerm(value);
+    }, 300); // 300ms debounce delay
+  }, []);
+
   // Common abaya sizes and colors - static arrays for performance
   const commonSizes = useMemo(() => ['50"', '52"', '54"', '56"', '58"', '60"', '62"'], []);
   const commonColors = useMemo(() => [
@@ -320,7 +376,25 @@ export default function Inventory() {
       const matchesColor = !filterColor || product.color === filterColor;
       const matchesOccasion = !filterOccasion || product.occasion === filterOccasion;
 
-      return matchesSearch && matchesCategory && matchesBrand && matchesFabric && matchesColor && matchesOccasion;
+      // ✅ ENHANCED: Stock status filtering
+      let matchesStockStatus = true;
+      if (stockStatus !== "all") {
+        const currentStock = product.currentStock || 0;
+        if (stockStatus === "in-stock") {
+          matchesStockStatus = currentStock > 0;
+        } else if (stockStatus === "low-stock") {
+          const minStockLevel = product.minStockLevel || 5;
+          matchesStockStatus = currentStock > 0 && currentStock <= minStockLevel;
+        } else if (stockStatus === "out-of-stock") {
+          matchesStockStatus = currentStock === 0;
+        }
+      }
+
+      // ✅ ENHANCED: Price range filtering
+      const matchesPrice = (!minPrice || product.sellingPrice >= minPrice) && 
+                          (!maxPrice || product.sellingPrice <= maxPrice);
+
+      return matchesSearch && matchesCategory && matchesBrand && matchesFabric && matchesColor && matchesOccasion && matchesStockStatus && matchesPrice;
     });
 
     // Sort products
@@ -342,7 +416,7 @@ export default function Inventory() {
     });
 
     return filtered;
-  }, [products, searchTerm, filterCategory, filterBrand, filterFabric, filterColor, filterOccasion, sortBy, sortOrder]);
+  }, [products, searchTerm, filterCategory, filterBrand, filterFabric, filterColor, filterOccasion, sortBy, sortOrder, stockStatus, minPrice, maxPrice]);
 
   // Optimized callback functions
   const addVariant = useCallback(() => {
@@ -609,17 +683,6 @@ export default function Inventory() {
     return { status: "In Stock", color: "text-green-600 bg-green-100" };
   }, []);
 
-  const clearAllFilters = useCallback(() => {
-    setSearchTerm("");
-    setFilterCategory("");
-    setFilterBrand("");
-    setFilterFabric("");
-    setFilterColor("");
-    setFilterOccasion("");
-    setSortBy("name");
-    setSortOrder("asc");
-  }, []);
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-50 py-6 sm:py-8 md:py-10 px-4 sm:px-6 lg:px-8">
       <div className="max-w-7xl mx-auto space-y-6 sm:space-y-8">
@@ -751,102 +814,303 @@ export default function Inventory() {
 
         {/* Search and Filters */}
         <div className="bg-white rounded-xl shadow-lg border border-gray-100 p-4 sm:p-6 md:p-8">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
-          <div>
-            <input
-              type="text"
-              placeholder="Search by name, code, barcode, style #, box #, color, size, fabric, occasion..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all placeholder-gray-500 text-sm"
-            />
+          {/* Main Search Bar with Advanced Toggle */}
+          <div className="mb-4 flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
+            <div className="flex-1">
+              <input
+                type="text"
+                placeholder="🔍 Search by name, code, barcode, style #, box #, color, size, fabric, occasion..."
+                defaultValue={searchTerm}
+                onChange={(e) => handleSearchChange(e.target.value)}
+                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all placeholder-gray-500 text-sm"
+              />
+            </div>
+            <button
+              onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
+              className={`px-4 py-2.5 rounded-lg font-medium text-sm whitespace-nowrap transition-all ${
+                showAdvancedFilters
+                  ? 'bg-purple-600 text-white shadow-md'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              ⚙️ Advanced {activeFiltersCount > 0 && `(${activeFiltersCount})`}
+            </button>
+            {activeFiltersCount > 0 && (
+              <button
+                onClick={clearAllFilters}
+                className="px-4 py-2.5 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 font-medium text-sm whitespace-nowrap transition-colors"
+              >
+                ✕ Clear Filters
+              </button>
+            )}
           </div>
-          
-          <select
-            value={filterCategory}
-            onChange={(e) => setFilterCategory(e.target.value)}
-            className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all text-sm"
-          >
-            <option value="">All Categories</option>
-            {categories.map((category) => (
-              <option key={category._id} value={category._id}>
-                {category.name}
-              </option>
-            ))}
-          </select>
 
-          <select
-            value={filterBrand}
-            onChange={(e) => setFilterBrand(e.target.value)}
-            className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all text-sm"
-          >
-            <option value="">All Brands</option>
-            {uniqueValues.brands.map((brand) => (
-              <option key={brand} value={brand}>
-                {brand}
-              </option>
-            ))}
-          </select>
+          {/* Results Info */}
+          <div className="mb-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
+            <p className="text-sm text-blue-700">
+              🔎 Showing <strong>{filteredProducts.length}</strong> of {products.length} products
+              {activeFiltersCount > 0 && <span> (filtered by {activeFiltersCount} criteria)</span>}
+            </p>
+          </div>
 
-          <select
-            value={filterFabric}
-            onChange={(e) => setFilterFabric(e.target.value)}
-            className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all text-sm"
-          >
-            <option value="">All Fabrics</option>
-            {uniqueValues.fabrics.map((fabric) => (
-              <option key={fabric} value={fabric}>
-                {fabric}
-              </option>
-            ))}
-          </select>
-        </div>
+          {/* Advanced Filters Panel */}
+          {showAdvancedFilters && (
+            <div className="mb-6 p-4 bg-gradient-to-br from-purple-50 to-pink-50 rounded-lg border border-purple-200">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {/* Category Filter */}
+                <div>
+                  <label className="text-xs font-semibold text-gray-700 mb-2 block">📁 Category</label>
+                  <select
+                    value={filterCategory}
+                    onChange={(e) => setFilterCategory(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm transition-all"
+                  >
+                    <option value="">All Categories</option>
+                    {categories.map((category) => (
+                      <option key={category._id} value={category._id}>
+                        {category.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-5 gap-4">
-          <select
-            value={filterColor}
-            onChange={(e) => setFilterColor(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 transition-all"
-          >
-            <option value="">All Colors</option>
-            {uniqueValues.colors.map((color) => (
-              <option key={color} value={color}>
-                {color}
-              </option>
-            ))}
-          </select>
+                {/* Brand Filter */}
+                <div>
+                  <label className="text-xs font-semibold text-gray-700 mb-2 block">🏷️ Brand</label>
+                  <select
+                    value={filterBrand}
+                    onChange={(e) => setFilterBrand(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm transition-all"
+                  >
+                    <option value="">All Brands</option>
+                    {uniqueValues.brands.map((brand) => (
+                      <option key={brand} value={brand}>
+                        {brand}
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
-          <select
-            value={filterOccasion}
-            onChange={(e) => setFilterOccasion(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 transition-all"
-          >
-            <option value="">All Occasions</option>
-            {uniqueValues.occasions.map((occasion) => (
-              <option key={occasion} value={occasion}>
-                {occasion}
-              </option>
-            ))}
-          </select>
+                {/* Fabric Filter */}
+                <div>
+                  <label className="text-xs font-semibold text-gray-700 mb-2 block">🧵 Fabric</label>
+                  <select
+                    value={filterFabric}
+                    onChange={(e) => setFilterFabric(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm transition-all"
+                  >
+                    <option value="">All Fabrics</option>
+                    {uniqueValues.fabrics.map((fabric) => (
+                      <option key={fabric} value={fabric}>
+                        {fabric}
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
-          <select
-            value={sortBy}
-            onChange={(e) => setSortBy(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 transition-all"
-          >
-            <option value="name">Sort by Name</option>
-            <option value="brand">Sort by Brand</option>
-            <option value="currentStock">Sort by Stock</option>
-            <option value="sellingPrice">Sort by Price</option>
-            <option value="_creationTime">Sort by Date Added</option>
-          </select>
+                {/* Color Filter */}
+                <div>
+                  <label className="text-xs font-semibold text-gray-700 mb-2 block">🎨 Color</label>
+                  <select
+                    value={filterColor}
+                    onChange={(e) => setFilterColor(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm transition-all"
+                  >
+                    <option value="">All Colors</option>
+                    {uniqueValues.colors.map((color) => (
+                      <option key={color} value={color}>
+                        {color}
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
-          <button
-            onClick={() => setSortOrder(sortOrder === "asc" ? "desc" : "asc")}
-            className="px-3 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 font-medium transition-colors"
-          >
-            {sortOrder === "asc" ? "↑ Ascending" : "↓ Descending"}
-          </button>
+                {/* Occasion Filter */}
+                <div>
+                  <label className="text-xs font-semibold text-gray-700 mb-2 block">🎉 Occasion</label>
+                  <select
+                    value={filterOccasion}
+                    onChange={(e) => setFilterOccasion(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm transition-all"
+                  >
+                    <option value="">All Occasions</option>
+                    {uniqueValues.occasions.map((occasion) => (
+                      <option key={occasion} value={occasion}>
+                        {occasion}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Stock Status Filter */}
+                <div>
+                  <label className="text-xs font-semibold text-gray-700 mb-2 block">📦 Stock Status</label>
+                  <select
+                    value={stockStatus}
+                    onChange={(e) => setStockStatus(e.target.value as any)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm transition-all"
+                  >
+                    <option value="all">All Items</option>
+                    <option value="in-stock">✅ In Stock</option>
+                    <option value="low-stock">⚠️ Low Stock</option>
+                    <option value="out-of-stock">❌ Out of Stock</option>
+                  </select>
+                </div>
+
+                {/* Min Price Filter */}
+                <div>
+                  <label className="text-xs font-semibold text-gray-700 mb-2 block">💰 Min Price (৳)</label>
+                  <input
+                    type="number"
+                    value={minPrice || ""}
+                    onChange={(e) => setMinPrice(e.target.value ? parseFloat(e.target.value) : undefined)}
+                    placeholder={`${priceStats.min}`}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm transition-all"
+                  />
+                </div>
+
+                {/* Max Price Filter */}
+                <div>
+                  <label className="text-xs font-semibold text-gray-700 mb-2 block">💰 Max Price (৳)</label>
+                  <input
+                    type="number"
+                    value={maxPrice || ""}
+                    onChange={(e) => setMaxPrice(e.target.value ? parseFloat(e.target.value) : undefined)}
+                    placeholder={`${priceStats.max}`}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm transition-all"
+                  />
+                </div>
+
+                {/* Sort By */}
+                <div>
+                  <label className="text-xs font-semibold text-gray-700 mb-2 block">↕️ Sort By</label>
+                  <select
+                    value={sortBy}
+                    onChange={(e) => setSortBy(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm transition-all"
+                  >
+                    <option value="name">Name</option>
+                    <option value="brand">Brand</option>
+                    <option value="currentStock">Stock</option>
+                    <option value="sellingPrice">Price</option>
+                    <option value="_creationTime">Date Added</option>
+                  </select>
+                </div>
+
+                {/* Sort Order */}
+                <div>
+                  <label className="text-xs font-semibold text-gray-700 mb-2 block">📊 Order</label>
+                  <button
+                    onClick={() => setSortOrder(sortOrder === "asc" ? "desc" : "asc")}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 font-medium text-sm transition-colors"
+                  >
+                    {sortOrder === "asc" ? "↑ Ascending" : "↓ Descending"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Basic Filters Row (always visible) */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+            <div>
+              <select
+                value={filterCategory}
+                onChange={(e) => setFilterCategory(e.target.value)}
+                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all text-sm"
+              >
+                <option value="">📁 All Categories</option>
+                {categories.map((category) => (
+                  <option key={category._id} value={category._id}>
+                    {category.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <select
+              value={filterBrand}
+              onChange={(e) => setFilterBrand(e.target.value)}
+              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all text-sm"
+            >
+              <option value="">🏷️ All Brands</option>
+              {uniqueValues.brands.map((brand) => (
+                <option key={brand} value={brand}>
+                  {brand}
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={filterFabric}
+              onChange={(e) => setFilterFabric(e.target.value)}
+              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all text-sm"
+            >
+              <option value="">🧵 All Fabrics</option>
+              {uniqueValues.fabrics.map((fabric) => (
+                <option key={fabric} value={fabric}>
+                  {fabric}
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={filterColor}
+              onChange={(e) => setFilterColor(e.target.value)}
+              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all text-sm"
+            >
+              <option value="">🎨 All Colors</option>
+              {uniqueValues.colors.map((color) => (
+                <option key={color} value={color}>
+                  {color}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+            <select
+              value={filterOccasion}
+              onChange={(e) => setFilterOccasion(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 transition-all"
+            >
+              <option value="">🎉 All Occasions</option>
+              {uniqueValues.occasions.map((occasion) => (
+                <option key={occasion} value={occasion}>
+                  {occasion}
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={stockStatus}
+              onChange={(e) => setStockStatus(e.target.value as any)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 transition-all text-sm"
+            >
+              <option value="all">📦 All Stock</option>
+              <option value="in-stock">✅ In Stock</option>
+              <option value="low-stock">⚠️ Low Stock</option>
+              <option value="out-of-stock">❌ Out of Stock</option>
+            </select>
+
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 transition-all"
+            >
+              <option value="name">Sort by Name</option>
+              <option value="brand">Sort by Brand</option>
+              <option value="currentStock">Sort by Stock</option>
+              <option value="sellingPrice">Sort by Price</option>
+              <option value="_creationTime">Sort by Date Added</option>
+            </select>
+
+            <button
+              onClick={() => setSortOrder(sortOrder === "asc" ? "desc" : "asc")}
+              className="px-3 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 font-medium transition-colors"
+            >
+              {sortOrder === "asc" ? "↑ Ascending" : "↓ Descending"}
+            </button>
 
           <button
             onClick={clearAllFilters}

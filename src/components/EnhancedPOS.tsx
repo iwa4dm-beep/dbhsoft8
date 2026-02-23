@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { toast } from "sonner";
@@ -20,15 +20,34 @@ interface CartItem {
   availableSizes?: string[];
 }
 
+interface SearchFilters {
+  searchTerm: string;
+  category?: Id<"categories">;
+  brand?: string;
+  fabric?: string;
+  minPrice?: number;
+  maxPrice?: number;
+  stockStatus?: "all" | "in-stock" | "out-of-stock" | "low-stock";
+  color?: string;
+  occasion?: string;
+}
+
 export default function EnhancedPOS() {
   const [cart, setCart] = useState<CartItem[]>([]);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState<Id<"categories"> | undefined>();
+  const [filters, setFilters] = useState<SearchFilters>({ searchTerm: "" });
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+  const [searchTimeout, setSearchTimeout] = useState<NodeJS.Timeout | null>(null);
+  const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const [cart, setCart] = useState<CartItem[]>([]);
+  const [filters, setFilters] = useState<SearchFilters>({ searchTerm: "" });
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+  const [searchTimeout, setSearchTimeout] = useState<NodeJS.Timeout | null>(null);
+  const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const [customerInfo, setCustomerInfo] = useState({
     name: "",
     phone: "",
   });
-  const [selectedCustomerId, setSelectedCustomerId] = useState<Id<"customers"> | null>(null); // ✅ Problem #5
+  const [selectedCustomerId, setSelectedCustomerId] = useState<Id<"customers"> | null>(null);
   const [discount, setDiscount] = useState(0);
   const [discountType, setDiscountType] = useState<"fixed" | "percentage">("fixed");
   const [paymentMethod, setPaymentMethod] = useState("cash");
@@ -45,32 +64,109 @@ export default function EnhancedPOS() {
   });
   const [completedSale, setCompletedSale] = useState<Id<"sales"> | null>(null);
   const [showInvoice, setShowInvoice] = useState(false);
-  const [activeTab, setActiveTab] = useState("products"); // For mobile tabs
+  const [activeTab, setActiveTab] = useState("products");
+
+  // ✅ ENHANCED: Debounced search to improve performance
+  const handleSearchChange = useCallback((value: string) => {
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
+    
+    debounceTimerRef.current = setTimeout(() => {
+      setFilters(prev => ({ ...prev, searchTerm: value }));
+    }, 300); // 300ms debounce delay
+  }, []);
+
+  const handleFilterChange = useCallback((key: keyof SearchFilters, value: any) => {
+    setFilters(prev => ({ ...prev, [key]: value }));
+  }, []);
+
+  const clearAllFilters = useCallback(() => {
+    setFilters({ searchTerm: "" });
+    setShowAdvancedFilters(false);
+  }, []);
 
   // ✅ UNLIMITED: Load ALL products without pagination
-  // Using new getAllProducts query to bypass Convex default 20-item limit
-  // Then apply client-side filtering for category and search
   const allProducts = useQuery(api.products.getAllProducts, {}) || [];
   
-  // Apply client-side filtering for search and category
+  // ✅ ENHANCED: Advanced multi-criteria filtering with performance optimization
   const products = useMemo(() => {
     let filtered = allProducts || [];
     
-    if (selectedCategory) {
-      filtered = filtered.filter(p => p.categoryId === selectedCategory);
+    // Category filter
+    if (filters.category) {
+      filtered = filtered.filter(p => p.categoryId === filters.category);
     }
     
-    if (searchTerm) {
-      const searchLower = searchTerm.toLowerCase();
+    // Advanced text search - search in multiple fields
+    if (filters.searchTerm) {
+      const searchLower = filters.searchTerm.toLowerCase();
       filtered = filtered.filter(p => 
         p.name?.toLowerCase().includes(searchLower) ||
         p.brand?.toLowerCase().includes(searchLower) ||
-        p.barcode?.includes(searchTerm)
+        p.barcode?.includes(filters.searchTerm) ||
+        p.productCode?.toLowerCase().includes(searchLower) ||
+        p.style?.toLowerCase().includes(searchLower) ||
+        p.fabric?.toLowerCase().includes(searchLower) ||
+        p.color?.toLowerCase().includes(searchLower) ||
+        p.occasion?.toLowerCase().includes(searchLower)
       );
     }
     
+    // Brand filter
+    if (filters.brand) {
+      filtered = filtered.filter(p => p.brand?.toLowerCase() === filters.brand!.toLowerCase());
+    }
+    
+    // Fabric filter
+    if (filters.fabric) {
+      filtered = filtered.filter(p => p.fabric?.toLowerCase() === filters.fabric!.toLowerCase());
+    }
+    
+    // Color filter
+    if (filters.color) {
+      filtered = filtered.filter(p => p.color?.toLowerCase() === filters.color!.toLowerCase());
+    }
+    
+    // Occasion filter
+    if (filters.occasion) {
+      filtered = filtered.filter(p => p.occasion?.toLowerCase() === filters.occasion!.toLowerCase());
+    }
+    
+    // Price range filter
+    if (filters.minPrice !== undefined) {
+      filtered = filtered.filter(p => p.sellingPrice >= filters.minPrice!);
+    }
+    if (filters.maxPrice !== undefined) {
+      filtered = filtered.filter(p => p.sellingPrice <= filters.maxPrice!);
+    }
+    
+    // Stock status filter
+    if (filters.stockStatus && filters.stockStatus !== "all") {
+      filtered = filtered.filter(p => {
+        const stock = p.currentStock || 0;
+        if (filters.stockStatus === "in-stock") return stock > 0;
+        if (filters.stockStatus === "out-of-stock") return stock === 0;
+        if (filters.stockStatus === "low-stock") return stock > 0 && stock <= (p.minStockLevel || 5);
+        return true;
+      });
+    }
+    
+    // Sort by relevance if searching
+    if (filters.searchTerm && products.length > 0) {
+      filtered.sort((a, b) => {
+        const aScore = (a.name?.toLowerCase().includes(filters.searchTerm.toLowerCase()) ? 10 : 0) +
+                      (a.brand?.toLowerCase().includes(filters.searchTerm.toLowerCase()) ? 5 : 0) +
+                      (a.barcode?.includes(filters.searchTerm) ? 3 : 0);
+        const bScore = (b.name?.toLowerCase().includes(filters.searchTerm.toLowerCase()) ? 10 : 0) +
+                      (b.brand?.toLowerCase().includes(filters.searchTerm.toLowerCase()) ? 5 : 0) +
+                      (b.barcode?.includes(filters.searchTerm) ? 3 : 0);
+        return bScore - aScore;
+      });
+    }
+    
     return filtered;
-  }, [allProducts, selectedCategory, searchTerm]);
+  }, [allProducts, filters]);
   
   const categories = useQuery(api.categories.list);
   const createSale = useMutation(api.sales.create);
@@ -284,13 +380,36 @@ export default function EnhancedPOS() {
   const clearCart = () => {
     setCart([]);
     setCustomerInfo({ name: "", phone: "" });
-    setSelectedCustomerId(null); // ✅ Problem #5: Reset customer
+    setSelectedCustomerId(null);
     setDiscount(0);
     setPaymentMethod("cash");
     setPaymentDetails({ transactionId: "", phoneNumber: "", reference: "" });
     setDeliveryType("pickup");
     setDeliveryInfo({ address: "", phone: "", charges: 0 });
   };
+
+  // ✅ ENHANCED: Get unique values for filter dropdowns
+  const getUniqueFilterValues = useCallback((key: keyof Omit<SearchFilters, 'searchTerm' | 'minPrice' | 'maxPrice' | 'stockStatus'>): string[] => {
+    return [...new Set(
+      allProducts
+        .map(p => p[key as keyof typeof p] as string)
+        .filter(Boolean)
+        .sort()
+    )];
+  }, [allProducts]);
+
+  const brands = useMemo(() => getUniqueFilterValues('brand'), [getUniqueFilterValues]);
+  const fabrics = useMemo(() => getUniqueFilterValues('fabric'), [getUniqueFilterValues]);
+  const colors = useMemo(() => getUniqueFilterValues('color'), [getUniqueFilterValues]);
+  const occasions = useMemo(() => getUniqueFilterValues('occasion'), [getUniqueFilterValues]);
+  
+  const priceStats = useMemo(() => {
+    const prices = allProducts.map(p => p.sellingPrice || 0);
+    return {
+      min: Math.min(...prices, 0),
+      max: Math.max(...prices, 0),
+    };
+  }, [allProducts]);
 
   const subtotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
   const deliveryCharges = deliveryType === "delivery" ? deliveryInfo.charges : 0;
@@ -464,11 +583,19 @@ export default function EnhancedPOS() {
         <div className="lg:col-span-2 space-y-4">
           <ProductsSection 
             products={products}
+            allProducts={allProducts}
             categories={categories}
-            searchTerm={searchTerm}
-            setSearchTerm={setSearchTerm}
-            selectedCategory={selectedCategory}
-            setSelectedCategory={setSelectedCategory}
+            filters={filters}
+            handleSearchChange={handleSearchChange}
+            handleFilterChange={handleFilterChange}
+            clearAllFilters={clearAllFilters}
+            showAdvancedFilters={showAdvancedFilters}
+            setShowAdvancedFilters={setShowAdvancedFilters}
+            brands={brands}
+            fabrics={fabrics}
+            colors={colors}
+            occasions={occasions}
+            priceStats={priceStats}
             addToCart={addToCart}
           />
         </div>
@@ -512,11 +639,19 @@ export default function EnhancedPOS() {
         {activeTab === "products" && (
           <ProductsSection 
             products={products}
+            allProducts={allProducts}
             categories={categories}
-            searchTerm={searchTerm}
-            setSearchTerm={setSearchTerm}
-            selectedCategory={selectedCategory}
-            setSelectedCategory={setSelectedCategory}
+            filters={filters}
+            handleSearchChange={handleSearchChange}
+            handleFilterChange={handleFilterChange}
+            clearAllFilters={clearAllFilters}
+            showAdvancedFilters={showAdvancedFilters}
+            setShowAdvancedFilters={setShowAdvancedFilters}
+            brands={brands}
+            fabrics={fabrics}
+            colors={colors}
+            occasions={occasions}
+            priceStats={priceStats}
             addToCart={addToCart}
           />
         )}
@@ -594,42 +729,212 @@ export default function EnhancedPOS() {
   );
 }
 
-function ProductsSection({ products, categories, searchTerm, setSearchTerm, selectedCategory, setSelectedCategory, addToCart }: any) {
+function ProductsSection({ 
+  products, 
+  allProducts,
+  categories, 
+  filters, 
+  handleSearchChange,
+  handleFilterChange,
+  clearAllFilters,
+  showAdvancedFilters,
+  setShowAdvancedFilters,
+  brands,
+  fabrics,
+  colors,
+  occasions,
+  priceStats,
+  addToCart 
+}: any) {
+  const hasActiveFilters = filters.searchTerm || filters.category || filters.brand || filters.fabric || 
+                          filters.color || filters.occasion || filters.minPrice !== undefined || 
+                          filters.maxPrice !== undefined || (filters.stockStatus && filters.stockStatus !== "all");
+
   return (
     <div className="space-y-4">
       <div className="bg-white rounded-lg shadow p-4 border border-gray-200">
-        <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-4 flex items-center">
-          <span className="mr-2">🧕</span>
-          Abaya Collection
-        </h3>
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="text-base sm:text-lg font-semibold text-gray-900 flex items-center">
+            <span className="mr-2">🧕</span>
+            Abaya Collection
+          </h3>
+          {hasActiveFilters && (
+            <button
+              onClick={clearAllFilters}
+              className="text-xs px-2 py-1 bg-red-100 text-red-700 rounded hover:bg-red-200 transition-colors"
+            >
+              ✕ Clear Filters
+            </button>
+          )}
+        </div>
         
-        {/* Search and Filter */}
-        <div className="flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-4 mb-4">
-          <input
-            type="text"
-            placeholder="Search abayas by name, style, fabric, color..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm"
-          />
-          <select
-            value={selectedCategory || ""}
-            onChange={(e) => setSelectedCategory(e.target.value as Id<"categories"> || undefined)}
-            className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm w-full sm:w-auto"
-          >
-            <option value="">All Categories</option>
-            {categories.map((category: any) => (
-              <option key={category._id} value={category._id}>
-                {category.name}
-              </option>
-            ))}
-          </select>
+        {/* Search Bar */}
+        <div className="mb-4">
+          <div className="flex space-x-2">
+            <input
+              type="text"
+              placeholder="🔍 Search by name, brand, style, fabric, color..."
+              defaultValue={filters.searchTerm}
+              onChange={(e) => handleSearchChange(e.target.value)}
+              className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm"
+            />
+            <button
+              onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
+              className={`px-3 py-2 rounded-lg font-medium text-sm transition-all ${
+                showAdvancedFilters 
+                  ? 'bg-purple-600 text-white' 
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              ⚙️ Filters {hasActiveFilters && `(${Object.values(filters).filter(Boolean).length})`}
+            </button>
+          </div>
+        </div>
+
+        {/* Advanced Filters Panel */}
+        {showAdvancedFilters && (
+          <div className="mb-4 p-4 bg-gradient-to-br from-purple-50 to-pink-50 rounded-lg border border-purple-200">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              {/* Category Filter */}
+              <div>
+                <label className="text-xs font-semibold text-gray-700 mb-1 block">📁 Category</label>
+                <select
+                  value={filters.category || ""}
+                  onChange={(e) => handleFilterChange('category', e.target.value || undefined)}
+                  className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-purple-500"
+                >
+                  <option value="">All Categories</option>
+                  {categories?.map((cat: any) => (
+                    <option key={cat._id} value={cat._id}>{cat.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Brand Filter */}
+              {brands.length > 0 && (
+                <div>
+                  <label className="text-xs font-semibold text-gray-700 mb-1 block">🏷️ Brand</label>
+                  <select
+                    value={filters.brand || ""}
+                    onChange={(e) => handleFilterChange('brand', e.target.value || undefined)}
+                    className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-purple-500"
+                  >
+                    <option value="">All Brands</option>
+                    {brands.map((brand: string) => (
+                      <option key={brand} value={brand}>{brand}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {/* Fabric Filter */}
+              {fabrics.length > 0 && (
+                <div>
+                  <label className="text-xs font-semibold text-gray-700 mb-1 block">🧵 Fabric</label>
+                  <select
+                    value={filters.fabric || ""}
+                    onChange={(e) => handleFilterChange('fabric', e.target.value || undefined)}
+                    className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-purple-500"
+                  >
+                    <option value="">All Fabrics</option>
+                    {fabrics.map((fabric: string) => (
+                      <option key={fabric} value={fabric}>{fabric}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {/* Color Filter */}
+              {colors.length > 0 && (
+                <div>
+                  <label className="text-xs font-semibold text-gray-700 mb-1 block">🎨 Color</label>
+                  <select
+                    value={filters.color || ""}
+                    onChange={(e) => handleFilterChange('color', e.target.value || undefined)}
+                    className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-purple-500"
+                  >
+                    <option value="">All Colors</option>
+                    {colors.map((color: string) => (
+                      <option key={color} value={color}>{color}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {/* Occasion Filter */}
+              {occasions.length > 0 && (
+                <div>
+                  <label className="text-xs font-semibold text-gray-700 mb-1 block">🎉 Occasion</label>
+                  <select
+                    value={filters.occasion || ""}
+                    onChange={(e) => handleFilterChange('occasion', e.target.value || undefined)}
+                    className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-purple-500"
+                  >
+                    <option value="">All Occasions</option>
+                    {occasions.map((occ: string) => (
+                      <option key={occ} value={occ}>{occ}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {/* Stock Status Filter */}
+              <div>
+                <label className="text-xs font-semibold text-gray-700 mb-1 block">📦 Stock</label>
+                <select
+                  value={filters.stockStatus || "all"}
+                  onChange={(e) => handleFilterChange('stockStatus', e.target.value as any)}
+                  className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-purple-500"
+                >
+                  <option value="all">All Items</option>
+                  <option value="in-stock">In Stock</option>
+                  <option value="low-stock">Low Stock</option>
+                  <option value="out-of-stock">Out of Stock</option>
+                </select>
+              </div>
+
+              {/* Min Price */}
+              <div>
+                <label className="text-xs font-semibold text-gray-700 mb-1 block">💰 Min Price</label>
+                <input
+                  type="number"
+                  value={filters.minPrice || ""}
+                  onChange={(e) => handleFilterChange('minPrice', e.target.value ? parseFloat(e.target.value) : undefined)}
+                  placeholder={`৳${priceStats.min}`}
+                  className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-purple-500"
+                />
+              </div>
+
+              {/* Max Price */}
+              <div>
+                <label className="text-xs font-semibold text-gray-700 mb-1 block">💰 Max Price</label>
+                <input
+                  type="number"
+                  value={filters.maxPrice || ""}
+                  onChange={(e) => handleFilterChange('maxPrice', e.target.value ? parseFloat(e.target.value) : undefined)}
+                  placeholder={`৳${priceStats.max}`}
+                  className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-purple-500"
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Results Info */}
+        <div className="mb-4 p-2 bg-blue-50 rounded border border-blue-200">
+          <p className="text-xs text-blue-700">
+            🔍 Showing <strong>{products.length}</strong> of {allProducts.length} abayas
+            {hasActiveFilters && <span> (filtered)</span>}
+          </p>
         </div>
 
         {/* Products Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 max-h-96 overflow-y-auto">
           {products.map((product: any) => {
-            const category = categories.find((c: any) => c._id === product.categoryId);
+            const category = categories?.find((c: any) => c._id === product.categoryId);
+            const stockStatus = product.currentStock === 0 ? 'Out' : product.currentStock <= (product.minStockLevel || 5) ? 'Low' : 'Good';
+            const stockColor = stockStatus === 'Good' ? 'text-green-600' : stockStatus === 'Low' ? 'text-orange-600' : 'text-red-600';
+
             return (
               <div
                 key={product._id}
@@ -654,7 +959,7 @@ function ProductsSection({ products, categories, searchTerm, setSearchTerm, sele
                 </div>
                 
                 <div className="mb-2">
-                  <p className="text-xs text-gray-500">Occasion: {product.occasion}</p>
+                  <p className="text-xs text-gray-500">📍 {product.occasion}</p>
                   {product.sizes && product.sizes.length > 0 && (
                     <p className="text-xs text-gray-500">Sizes: {product.sizes.join(', ')}</p>
                   )}
@@ -663,7 +968,9 @@ function ProductsSection({ products, categories, searchTerm, setSearchTerm, sele
                 <div className="flex justify-between items-center">
                   <div>
                     <p className="font-semibold text-purple-600 text-sm">৳{product.sellingPrice.toLocaleString('en-BD')}</p>
-                    <p className="text-xs text-gray-500">Stock: {product.currentStock}</p>
+                    <p className={`text-xs font-medium ${stockColor}`}>
+                      {stockStatus === 'Out' ? '❌ Out of Stock' : `${stockStatus || ''} Stock: ${product.currentStock}`}
+                    </p>
                   </div>
                   <button
                     onClick={(e) => {
@@ -673,7 +980,7 @@ function ProductsSection({ products, categories, searchTerm, setSearchTerm, sele
                     disabled={product.currentStock === 0}
                     className="px-3 py-1 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded text-xs hover:from-purple-700 hover:to-pink-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-all duration-200"
                   >
-                    Add
+                    {product.currentStock === 0 ? 'Out' : 'Add'}
                   </button>
                 </div>
               </div>
@@ -684,7 +991,17 @@ function ProductsSection({ products, categories, searchTerm, setSearchTerm, sele
         {products.length === 0 && (
           <div className="text-center py-8">
             <div className="text-4xl mb-2 opacity-50">🧕</div>
-            <p className="text-gray-500 text-sm">No abayas found</p>
+            <p className="text-gray-500 text-sm">
+              {hasActiveFilters ? 'No abayas match your filters' : 'No abayas found'}
+            </p>
+            {hasActiveFilters && (
+              <button
+                onClick={clearAllFilters}
+                className="mt-2 text-purple-600 hover:text-purple-800 text-sm font-medium"
+              >
+                Clear filters
+              </button>
+            )}
           </div>
         )}
       </div>
