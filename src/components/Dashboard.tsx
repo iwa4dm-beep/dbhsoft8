@@ -5,10 +5,10 @@ import { useCustomNotificationSounds } from "../hooks/useCustomNotificationSound
 import { useNotificationSystem, NotificationPresets } from "../hooks/useNotificationSystem";
 import { NotificationAlertsPanel, NotificationIcon, DashboardAlertsSummary } from "./NotificationAlertsPanel";
 import { AuthenticationFlowVerification } from "./AuthenticationFlowVerification";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback, memo } from "react";
 
 // Skeleton component for loading cards
-const MetricCardSkeleton = () => (
+const MetricCardSkeleton = memo(() => (
   <div className="bg-white rounded-lg sm:rounded-xl border border-slate-200 p-3 sm:p-6 animate-pulse">
     <div className="flex items-start justify-between mb-2 sm:mb-4">
       <div className="flex-1">
@@ -19,9 +19,10 @@ const MetricCardSkeleton = () => (
     </div>
     <div className="h-3 bg-slate-200 rounded w-32" />
   </div>
-);
+));
+MetricCardSkeleton.displayName = 'MetricCardSkeleton';
 
-const SalesCardSkeleton = () => (
+const SalesCardSkeleton = memo(() => (
   <div className="bg-white rounded-lg sm:rounded-xl border border-slate-200 shadow-sm p-4 sm:p-6 animate-pulse">
     <div className="flex items-center gap-2 sm:gap-3 mb-4 sm:mb-6">
       <div className="w-6 h-6 sm:w-8 sm:h-8 bg-slate-200 rounded" />
@@ -33,7 +34,8 @@ const SalesCardSkeleton = () => (
       ))}
     </div>
   </div>
-);
+));
+SalesCardSkeleton.displayName = 'SalesCardSkeleton';
 
 export function Dashboard() {
   const [notificationPanelOpen, setNotificationPanelOpen] = useState(false);
@@ -47,6 +49,11 @@ export function Dashboard() {
     const verified = sessionStorage.getItem('authFlowVerified');
     return !verified;
   });
+
+  // ✅ Memoize close handler to prevent unnecessary function recreations
+  const handleCloseAuthVerification = useCallback(() => {
+    setShowAuthVerification(false);
+  }, []);
 
   useEffect(() => {
     if (showAuthVerification) {
@@ -79,10 +86,18 @@ export function Dashboard() {
   const { isOnline, isSyncing } = useOfflineSync();
   
   // Check if data is still loading - check if queries are undefined (loading state)
-  const isLoading = products === undefined || !sales;
+  const isDataLoading = products === undefined || !sales;
 
-  // Calculate stats - only when data is available
-  const totalProducts = products?.length || 0;
+  // ✅ Memoize metric calculations to prevent unnecessary recalculations
+  const metrics = useMemo(() => ({
+    totalProducts: products?.length || 0,
+    totalAbayas: products?.reduce((sum, product) => sum + product.currentStock, 0) || 0,
+    lowStockProducts: products?.filter(p => p.currentStock <= p.minStockLevel) || [],
+    totalValue: products?.reduce((sum, product) => 
+      sum + (product.sellingPrice * product.currentStock), 0) || 0,
+  }), [products]);
+  
+  const { totalProducts, totalAbayas, lowStockProducts, totalValue } = metrics;
   
   // ✅ Debug: Log product loading
   useEffect(() => {
@@ -92,10 +107,6 @@ export function Dashboard() {
       console.log('✅ Last product:', products[totalProducts-1]?.name, 'Stock:', products[totalProducts-1]?.currentStock);
     }
   }, [totalProducts, products]);
-  const totalAbayas = products?.reduce((sum, product) => sum + product.currentStock, 0) || 0;
-  const lowStockProducts = products?.filter(p => p.currentStock <= p.minStockLevel) || [];
-  const totalValue = products?.reduce((sum, product) => 
-    sum + (product.sellingPrice * product.currentStock), 0) || 0;
 
   // Recent sales (last 7 days)
   const sevenDaysAgo = Date.now() - (7 * 24 * 60 * 60 * 1000);
@@ -193,7 +204,7 @@ export function Dashboard() {
                 </div>
               </div>
               <button
-                onClick={() => setShowAuthVerification(false)}
+                onClick={handleCloseAuthVerification}
                 className="text-green-600 hover:text-green-700 font-bold text-xl"
               >
                 ✕
@@ -281,7 +292,7 @@ export function Dashboard() {
         <div className="space-y-4 sm:space-y-6 lg:space-y-8">
           {/* Metrics Row 1: Responsive Grid - Show skeletons while loading */}
           <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-4 lg:gap-6">
-            {isLoading ? (
+            {isDataLoading ? (
               <>
                 <MetricCardSkeleton />
                 <MetricCardSkeleton />
@@ -343,7 +354,7 @@ export function Dashboard() {
 
           {/* Sales Section: Responsive Cards - Show skeletons while loading */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
-            {isLoading ? (
+            {isDataLoading ? (
               <>
                 <SalesCardSkeleton />
                 <SalesCardSkeleton />
