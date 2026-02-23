@@ -540,6 +540,25 @@ export function Dashboard() {
           {/* Dashboard Alerts Summary */}
           <DashboardAlertsSummary />
         </div>
+
+        {/* 🔧 DEVELOPMENT: Diagnostic Panel */}
+        {process.env.NODE_ENV === 'development' && (
+          <div className="mt-8 p-4 bg-yellow-50 border-2 border-yellow-300 rounded-lg">
+            <div className="font-bold text-yellow-900 mb-2">🔧 DIAGNOSTIC INFO (DEV ONLY)</div>
+            <div className="text-sm text-yellow-800 space-y-1 font-mono">
+              <div>📦 Products loaded: <span className={totalProducts > 0 ? "text-green-700 font-bold" : "text-red-700 font-bold"}>{totalProducts}</span></div>
+              <div>💾 Response object: <span className={productsResponse ? "text-green-700" : "text-red-700"}>{productsResponse ? "✅ Received" : "❌ Undefined (loading?)"}</span></div>
+              <div>📝 Response type: <span>{productsResponse ? typeof productsResponse : "N/A"}</span></div>
+              <div>🏷️ Has items key: <span className={productsResponse?.items ? "text-green-700" : "text-red-700"}>{productsResponse?.items ? "✅ Yes" : "❌ No"}</span></div>
+              <div>📊 First product: <span>{products[0]?.name || "❌ EMPTY"}</span></div>
+              <div>💰 Total stock value: ৳{totalValue.toLocaleString('en-BD')}</div>
+              <div>⚠️ Low stock items: {lowStockProducts.length}</div>
+              <div>👥 Customers: {customers.length}</div>
+              <div>📂 Categories: {categories.length}</div>
+              <div>📌 Is Loading: {isLoading ? "🟡 YES" : "🟢 NO"}</div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Notification Panel */}

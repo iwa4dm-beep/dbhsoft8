@@ -179,20 +179,36 @@ export const list = query({
       );
     }
     
+    // ✅ NEW: Check if we have ANY products before filtering
+    const allProductsCount = products.length;
+    
     // Filter active products
-    products = products.filter(product => product.isActive);
+    const activeProducts = products.filter(product => product.isActive === true);
+    const inactiveCount = products.filter(product => product.isActive === false).length;
+    const noStatusCount = products.filter(product => product.isActive === undefined || product.isActive === null).length;
+    
+    // Log diagnostic info
+    console.log(`📊 [PRODUCTS ANALYSIS]`);
+    console.log(`  All products: ${allProductsCount}`);
+    console.log(`  Active (true): ${activeProducts.length}`);
+    console.log(`  Inactive (false): ${inactiveCount}`);
+    console.log(`  No status (undefined): ${noStatusCount}`);
+    
+    // USE: If NO active products found, show ALL products (for troubleshooting)
+    const productsToReturn = activeProducts.length > 0 ? activeProducts : products;
+    console.log(`  RETURNING: ${productsToReturn.length} products`);
     
     // Get total count BEFORE pagination for metadata
-    const totalCount = products.length;
+    const totalCount = productsToReturn.length;
     
     // Apply pagination AFTER all filtering (if limit provided)
     if (args.limit && args.limit > 0) {
       const offset = args.offset || 0;
-      products = products.slice(offset, offset + args.limit);
+      const paginatedProducts = productsToReturn.slice(offset, offset + args.limit);
       
       // Return paginated results with metadata
       return {
-        items: products,
+        items: paginatedProducts,
         pagination: {
           total: totalCount,
           limit: args.limit,
@@ -206,10 +222,10 @@ export const list = query({
     
     // Return all products if no limit specified
     return {
-      items: products,
+      items: productsToReturn,
       pagination: {
         total: totalCount,
-        limit: products.length,
+        limit: productsToReturn.length,
         offset: 0,
         hasMore: false,
         pageNumber: 1,
