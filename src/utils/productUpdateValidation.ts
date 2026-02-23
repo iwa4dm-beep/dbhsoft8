@@ -303,8 +303,11 @@ export const detectConcurrentUpdate = (
 // ERROR MESSAGE MAPPING
 // ============================================
 
-export const mapUpdateError = (error: Error): string => {
-  const message = error?.message || error?.data?.message || "অজানা ত্রুটি (Unknown error)";
+export const mapUpdateError = (error: Error | Record<string, any>): string => {
+  const message = 
+    (error as Record<string, any>)?.message || 
+    (error as Record<string, any>)?.data?.message || 
+    "অজানা ত্রুটি (Unknown error)";
 
   const errorMap: Record<string, string> = {
     "Product not found": "পণ্য পাওয়া যায়নি (Product not found)",
